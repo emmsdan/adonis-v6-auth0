@@ -10,7 +10,7 @@
 |
 */
 
-import type { AllyUserContract } from '@ioc:Adonis/Addons/Ally'
+import type { AllyDriverContract, AllyUserContract } from '@ioc:Adonis/Addons/Ally'
 import type { HttpContextContract } from '@ioc:Adonis/Core/HttpContext'
 import { Oauth2Driver, ApiRequest } from '@adonisjs/ally/build/standalone'
 
@@ -20,10 +20,10 @@ import { Oauth2Driver, ApiRequest } from '@adonisjs/ally/build/standalone'
  * more properties.
  *
  * ------------------------------------------------
- * Change "YourDriver" to something more relevant
+ * Change "Auth0" to something more relevant
  * ------------------------------------------------
  */
-export type YourDriverAccessToken = {
+export type Auth0AccessToken = {
   token: string
   type: 'bearer'
 }
@@ -33,24 +33,25 @@ export type YourDriverAccessToken = {
  * https://github.com/adonisjs/ally/blob/develop/adonis-typings/ally.ts#L236-L268
  *
  * ------------------------------------------------
- * Change "YourDriver" to something more relevant
+ * Change "Auth0" to something more relevant
  * ------------------------------------------------
  */
-export type YourDriverScopes = string
+export type Auth0Scopes = string
 
 /**
  * Define the configuration options accepted by your driver. It must have the following
  * properties and you are free add more.
  *
  * ------------------------------------------------
- * Change "YourDriver" to something more relevant
+ * Change "Auth0" to something more relevant
  * ------------------------------------------------
  */
-export type YourDriverConfig = {
-  driver: 'YourDriverName'
+export type Auth0Config = {
+  driver: 'auth0'
   clientId: string
   clientSecret: string
   callbackUrl: string
+  issuer: string
   authorizeUrl?: string
   accessTokenUrl?: string
   userInfoUrl?: string
@@ -60,31 +61,34 @@ export type YourDriverConfig = {
  * Driver implementation. It is mostly configuration driven except the user calls
  *
  * ------------------------------------------------
- * Change "YourDriver" to something more relevant
+ * Change "Auth0" to something more relevant
  * ------------------------------------------------
  */
-export class YourDriver extends Oauth2Driver<YourDriverAccessToken, YourDriverScopes> {
+export class Auth0Driver
+  extends Oauth2Driver<Auth0AccessToken, Auth0Scopes>
+  implements AllyDriverContract<Auth0AccessToken, Auth0Scopes>
+{
   /**
    * The URL for the redirect request. The user will be redirected on this page
    * to authorize the request.
    *
    * Do not define query strings in this URL.
    */
-  protected authorizeUrl = ''
+  protected authorizeUrl = '/authorize'
 
   /**
    * The URL to hit to exchange the authorization code for the access token
    *
    * Do not define query strings in this URL.
    */
-  protected accessTokenUrl = ''
+  protected accessTokenUrl = '/token'
 
   /**
    * The URL to hit to get the user details
    *
    * Do not define query strings in this URL.
    */
-  protected userInfoUrl = ''
+  protected userInfoUrl = '/userinfo'
 
   /**
    * The param name for the authorization code. Read the documentation of your oauth
@@ -105,7 +109,7 @@ export class YourDriver extends Oauth2Driver<YourDriverAccessToken, YourDriverSc
    * approach is to prefix the oauth provider name to `oauth_state` value. For example:
    * For example: "facebook_oauth_state"
    */
-  protected stateCookieName = 'YourDriver_oauth_state'
+  protected stateCookieName = 'Auth0_oauth_state'
 
   /**
    * Parameter name to be used for sending and receiving the state from.
@@ -125,8 +129,9 @@ export class YourDriver extends Oauth2Driver<YourDriverAccessToken, YourDriverSc
    */
   protected scopesSeparator = ' '
 
-  constructor(ctx: HttpContextContract, public config: YourDriverConfig) {
+  constructor(ctx: HttpContextContract, public config: Auth0Config) {
     super(ctx, config)
+    this.configureUrls()
 
     /**
      * Extremely important to call the following method to clear the
@@ -142,7 +147,7 @@ export class YourDriver extends Oauth2Driver<YourDriverAccessToken, YourDriverSc
    * is made by the base implementation of "Oauth2" driver and this is a
    * hook to pre-configure the request.
    */
-  // protected configureRedirectRequest(request: RedirectRequest<YourDriverScopes>) {}
+  // protected configureRedirectRequest(request: RedirectRequest<Auth0Scopes>) {}
 
   /**
    * Optionally configure the access token request. The actual request is made by
@@ -168,7 +173,7 @@ export class YourDriver extends Oauth2Driver<YourDriverAccessToken, YourDriverSc
    */
   public async user(
     callback?: (request: ApiRequest) => void
-  ): Promise<AllyUserContract<YourDriverAccessToken>> {
+  ): Promise<AllyUserContract<Auth0AccessToken & { data: any }>> {
     const accessToken = await this.accessToken()
     const request = this.httpClient(this.config.userInfoUrl || this.userInfoUrl)
 
@@ -183,6 +188,8 @@ export class YourDriver extends Oauth2Driver<YourDriverAccessToken, YourDriverSc
     /**
      * Write your implementation details here
      */
+    const data = await request.get()
+    return { ...data, token: { type: 'bearer', token: accessToken } }
   }
 
   public async userFromToken(
@@ -202,5 +209,22 @@ export class YourDriver extends Oauth2Driver<YourDriverAccessToken, YourDriverSc
     /**
      * Write your implementation details here
      */
+    const data = await request.get()
+    return { ...data, token: { type: 'bearer', token: accessToken } }
   }
+
+  private configureUrls() {
+    const baseUrl = this.config.issuer
+    this.authorizeUrl = baseUrl + this.authorizeUrl
+    this.accessTokenUrl = baseUrl + this.accessTokenUrl
+    this.userInfoUrl = baseUrl + this.userInfoUrl
+  }
+}
+
+/**
+ * The factory function to reference the driver implementation
+ * inside the "config/ally.ts" file.
+ */
+export function auth0(config: Auth0Config): (ctx: HttpContextContract) => Auth0Driver {
+  return (ctx) => new Auth0Driver(ctx, config)
 }
